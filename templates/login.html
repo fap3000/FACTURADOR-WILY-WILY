@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ingresar - Wily Facturador</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f0f6ff;
+      color: #1a2a3a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-wrap { width: 100%; max-width: 380px; padding: 20px; }
+    .logo { text-align: center; margin-bottom: 36px; }
+    .logo h1 { font-size: 24px; font-weight: 700; color: #2979d4; letter-spacing: -.5px; }
+    .logo h1 span { color: #1a5fb0; }
+    .logo p { color: #5a7a9a; font-size: 13px; margin-top: 6px; }
+    .card {
+      background: #ffffff;
+      border: 1px solid #c8ddf5;
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 4px 20px rgba(41,121,212,.08);
+    }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 12px; font-weight: 500; color: #5a7a9a; margin-bottom: 6px; }
+    input {
+      width: 100%;
+      background: #f0f6ff;
+      border: 1px solid #c8ddf5;
+      border-radius: 7px;
+      color: #1a2a3a;
+      padding: 11px 14px;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      transition: all .15s;
+    }
+    input:focus { outline: none; border-color: #2979d4; box-shadow: 0 0 0 3px rgba(41,121,212,.1); }
+    .btn {
+      width: 100%;
+      background: #2979d4;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background .15s;
+    }
+    .btn:hover { background: #1a5fb0; }
+    .error-msg {
+      background: rgba(198,40,40,.08);
+      border: 1px solid rgba(198,40,40,.25);
+      color: #c62828;
+      padding: 10px 14px;
+      border-radius: 7px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="logo">
+      <h1>Wily <span>·</span> Facturador</h1>
+      <p>Sistema de facturacion electronica ARCA</p>
+    </div>
+    <div class="card">
+      {% if error %}
+        <div class="error-msg">{{ error }}</div>
+      {% endif %}
+      <form method="POST">
+        <div class="form-group">
+          <label>Usuario</label>
+          <input type="text" name="usuario" placeholder="facturador / admin" autofocus autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>Contrasena</label>
+          <input type="password" name="password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn">Ingresar</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

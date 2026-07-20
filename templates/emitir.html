@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Emitir Factura C - Wily{% endblock %}
+
+{% block content %}
+
+<div style="max-width:500px;margin:0 auto">
+  <div class="section-header" style="margin-bottom:24px">
+    <div class="section-title">Nueva Factura C</div>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-ghost" style="font-size:13px;padding:7px 14px">Volver</a>
+  </div>
+
+  <div class="card">
+    <form method="POST">
+
+      <div style="margin-bottom:20px">
+        <div class="card-title" style="margin-bottom:12px">Datos del destinatario</div>
+        <div class="form-grid">
+          <div class="form-group full">
+            <label>Nombre / Razon Social</label>
+            <input type="text" name="nombre" placeholder="Ej: Juan Perez" required>
+          </div>
+          <div class="form-group">
+            <label>Tipo de documento</label>
+            <select name="doc_tipo" id="doc_tipo" onchange="toggleDocNro()">
+              <option value="99">Consumidor Final</option>
+              <option value="96">DNI</option>
+              <option value="80">CUIT</option>
+            </select>
+          </div>
+          <div class="form-group" id="wrap-doc-nro" style="display:none">
+            <label>N de documento</label>
+            <input type="text" name="doc_nro" id="doc_nro" placeholder="Sin guiones">
+          </div>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:20px;margin-bottom:20px">
+        <div class="card-title" style="margin-bottom:12px">Importe</div>
+        <div class="form-group">
+          <label>Monto total ($ ARS)</label>
+          <input type="number" name="monto" placeholder="0.00" step="0.01" min="0.01" required
+            style="font-size:24px;font-weight:700;padding:14px;letter-spacing:-.5px">
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:8px">
+          Factura C: el monto ingresado es el total. No discrimina IVA.
+        </p>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:13px">
+        Emitir Factura C en ARCA
+      </button>
+
+    </form>
+  </div>
+
+  <div class="card" style="margin-top:16px;padding:16px">
+    <div class="card-title">Carga masiva</div>
+    <p style="font-size:13px;color:var(--muted);margin-top:4px">
+      Tenes varias facturas?
+      <a href="{{ url_for('masivo') }}" style="color:#2979d4">Subi un Excel y procesalas todas de una vez</a>
+    </p>
+  </div>
+</div>
+
+<script>
+  function toggleDocNro() {
+    const tipo = document.getElementById("doc_tipo").value;
+    const wrap  = document.getElementById("wrap-doc-nro");
+    const input = document.getElementById("doc_nro");
+    if (tipo === "99") {
+      wrap.style.display = "none";
+      input.required = false;
+      input.value = "";
+    } else {
+      wrap.style.display = "flex";
+      input.required = true;
+    }
+  }
+</script>
+
+{% endblock %}

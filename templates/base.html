@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Wily Facturador{% endblock %}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root {
+      --bg:        #f0f6ff;
+      --surface:   #ffffff;
+      --border:    #c8ddf5;
+      --accent:    #2979d4;
+      --accent-lit:#1a5fb0;
+      --accent-dim:#e3eeff;
+      --success:   #2e7d32;
+      --error:     #c62828;
+      --text:      #1a2a3a;
+      --muted:     #5a7a9a;
+      --mono:      'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    nav {
+      background: var(--accent);
+      border-bottom: 1px solid var(--accent-lit);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-brand {
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: -0.3px;
+      color: #fff;
+      text-decoration: none;
+    }
+    .nav-brand span { color: #a8d4ff; }
+    .nav-links { display: flex; gap: 4px; align-items: center; }
+    .nav-links a {
+      color: rgba(255,255,255,.8);
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all .15s;
+    }
+    .nav-links a:hover, .nav-links a.active {
+      color: #fff;
+      background: rgba(255,255,255,.2);
+    }
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge-usuario {
+      background: rgba(255,255,255,.2);
+      color: #fff;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin-bottom: 8px;
+    }
+    .card-value {
+      font-size: 28px;
+      font-weight: 700;
+      font-family: var(--mono);
+      letter-spacing: -1px;
+      color: var(--accent);
+    }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 2px solid var(--border);
+      background: var(--accent-dim);
+    }
+    td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--accent-dim); }
+
+    .mono { font-family: var(--mono); font-size: 12px; }
+    .muted { color: var(--muted); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+    .badge-ok  { background: rgba(46,125,50,.12); color: var(--success); }
+    .badge-ok::before { background: var(--success); }
+    .badge-err { background: rgba(198,40,40,.12);  color: var(--error); }
+    .badge-err::before { background: var(--error); }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.full { grid-column: 1 / -1; }
+    label { font-size: 12px; font-weight: 500; color: var(--muted); }
+    input, select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      transition: border-color .15s;
+      width: 100%;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(41,121,212,.1);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 7px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      text-decoration: none;
+      transition: all .15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-lit); }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-ghost:hover { background: var(--accent-dim); }
+
+    .alert {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .alert-success { background: rgba(46,125,50,.1); border: 1px solid rgba(46,125,50,.3); color: var(--success); }
+    .alert-error   { background: rgba(198,40,40,.1); border: 1px solid rgba(198,40,40,.3); color: var(--error); }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .section-title { font-size: 18px; font-weight: 700; letter-spacing: -.3px; color: var(--text); }
+
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+      background: var(--accent-dim);
+    }
+    .upload-zone:hover { border-color: var(--accent); background: #ddeeff; }
+    .upload-zone input[type=file] { display: none; }
+
+    @media (max-width: 600px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: 1fr 1fr; }
+      nav { padding: 0 16px; }
+      main { padding: 20px 16px; }
+    }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+{% if session.usuario %}
+<nav>
+  <a class="nav-brand" href="{{ url_for('dashboard') }}">Wily <span>·</span> Facturador</a>
+  <div class="nav-links">
+    <a href="{{ url_for('dashboard') }}" {% if request.endpoint == 'dashboard' %}class="active"{% endif %}>Comprobantes</a>
+    <a href="{{ url_for('emitir') }}"    {% if request.endpoint == 'emitir'    %}class="active"{% endif %}>Emitir</a>
+    <a href="{{ url_for('masivo') }}"    {% if request.endpoint == 'masivo'    %}class="active"{% endif %}>Carga masiva</a>
+  </div>
+  <div class="nav-right">
+    <span class="badge-usuario">{{ session.nombre }}</span>
+    <a href="{{ url_for('logout') }}" style="color:rgba(255,255,255,.8);text-decoration:none;font-size:12px;">Salir</a>
+  </div>
+</nav>
+{% endif %}
+
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ 'success' if cat == 'success' else 'error' }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>

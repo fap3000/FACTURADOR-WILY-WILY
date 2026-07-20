@@ -1,0 +1,6 @@
+flask
+zeep
+pyopenssl
+requests
+gunicorn
+openpyxl
