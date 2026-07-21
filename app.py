@@ -390,12 +390,16 @@ def emitir_factura_arca(data):
             raise Exception("; ".join(errores))
 
     except Exception as e:
+        import traceback
+        error_detalle = traceback.format_exc()
+        print("ERROR ARCA:", error_detalle)
+        error_msg = str(e) if str(e) else "Error desconocido: " + type(e).__name__ + " - " + error_detalle[-500:]
         return {
             "numero": None, "punto_venta": PUNTO_VENTA,
             "fecha": hoy, "destinatario": data["nombre"],
             "doc_tipo": data.get("doc_tipo"), "doc_nro": data.get("doc_nro"),
             "monto": data["monto"], "cae": None, "cae_vto": None,
-            "estado": "RECHAZADO", "error": str(e),
+            "estado": "RECHAZADO", "error": error_msg,
             "usuario": session["usuario"],
         }
 
