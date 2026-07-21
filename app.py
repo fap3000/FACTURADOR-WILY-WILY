@@ -260,7 +260,12 @@ def emitir_factura_arca(data):
         ticket = None
         if os.path.exists(cache_file):
             cached = json.loads(open(cache_file).read())
-            if datetime.now() < datetime.fromisoformat(cached["expiry"]) - timedelta(minutes=10):
+            from datetime import timezone
+            now_utc = datetime.now(timezone.utc)
+            expiry = datetime.fromisoformat(cached["expiry"])
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            if now_utc < expiry - timedelta(minutes=10):
                 ticket = cached
 
         if not ticket:
