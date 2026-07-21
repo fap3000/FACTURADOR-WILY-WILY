@@ -373,6 +373,9 @@ def emitir_factura_arca(data):
         })
 
         det = resp.FeDetResp.FECAEDetResponse[0]
+        print("RESULTADO ARCA:", det.Resultado)
+        print("ERRORES RESP:", resp.Errors)
+        print("OBS DET:", det.Observaciones)
         if det.Resultado == "A":
             return {
                 "numero": numero, "punto_venta": PUNTO_VENTA,
@@ -384,10 +387,13 @@ def emitir_factura_arca(data):
             }
         else:
             errores = []
+            if resp.Errors:
+                for e in resp.Errors.Err:
+                    errores.append("[E{}] {}".format(e.Code, e.Msg))
             if det.Observaciones:
                 for o in det.Observaciones.Obs:
-                    errores.append("[{}] {}".format(o.Code, o.Msg))
-            raise Exception("; ".join(errores))
+                    errores.append("[O{}] {}".format(o.Code, o.Msg))
+            raise Exception("; ".join(errores) if errores else "ARCA rechazo sin detalle. Resultado: " + str(det.Resultado))
 
     except Exception as e:
         import traceback
