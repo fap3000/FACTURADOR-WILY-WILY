@@ -280,24 +280,25 @@ def emitir_factura_arca(data):
                 exp.strftime('%Y-%m-%dT%H:%M:%S')
             ).encode()
  
-            from cryptography.hazmat.primitives.serialization import load_pem_private_key
-            from cryptography.x509 import load_pem_x509_certificate
-            from cryptography.hazmat.primitives import hashes
-            from cryptography.hazmat.backends import default_backend
-            from cryptography.hazmat.primitives.serialization.pkcs7 import PKCS7SignatureBuilder, PKCS7Options
+            from OpenSSL import crypto
             import base64
  
             with open(CERT_PATH, "rb") as fc:
-                cert = load_pem_x509_certificate(fc.read(), default_backend())
+                cert = crypto.load_certificate(crypto.FILETYPE_PEM, fc.read())
             with open(KEY_PATH, "rb") as fk:
-                key = load_pem_private_key(fk.read(), password=None, backend=default_backend())
+                key = crypto.load_privatekey(crypto.FILETYPE_PEM, fk.read())
  
-            cms_der = (
-                PKCS7SignatureBuilder()
-                .set_data(xml_tra)
-                .add_signer(cert, key, hashes.SHA256())
-                .sign(encoding=None, options=[PKCS7Options.NoDetach])
+            pkcs7 = crypto.PKCS7Type()
+            bio_in = crypto._util.lib.BIO_new_mem_buf(xml_tra, len(xml_tra))
+            flags = crypto._util.lib.PKCS7_NODETACH
+            p7 = crypto._util.lib.PKCS7_sign(
+                cert._x509, key._pkey, crypto._util.ffi.NULL, bio_in, flags
             )
+            bio_out = crypto._util.lib.BIO_new(crypto._util.lib.BIO_s_mem())
+            crypto._util.lib.i2d_PKCS7_bio(bio_out, p7)
+            buf = crypto._util.ffi.new("char**")
+            length = crypto._util.lib.BIO_get_mem_data(bio_out, buf)
+            cms_der = bytes(crypto._util.ffi.buffer(buf[0], length))
             cms_b64 = base64.b64encode(cms_der).decode()
  
             wsaa = Client(WSAA_URL)
