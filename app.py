@@ -234,7 +234,25 @@ def emitir_factura_arca(data):
         }
 
     try:
+        import urllib3
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.ssl_ import create_urllib3_context
+        import ssl
+
+        class DHAdapter(HTTPAdapter):
+            def init_poolmanager(self, *args, **kwargs):
+                ctx = create_urllib3_context()
+                ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
+                ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
+                kwargs["ssl_context"] = ctx
+                return super().init_poolmanager(*args, **kwargs)
+
+        session_requests = requests.Session()
+        session_requests.mount("https://", DHAdapter())
+
         from zeep import Client
+        from zeep.transports import Transport
         import tempfile
         import xml.etree.ElementTree as ET
         from datetime import timedelta
@@ -307,7 +325,7 @@ def emitir_factura_arca(data):
             )
             cms_b64 = base64.b64encode(cms_der).decode()
 
-            wsaa = Client(WSAA_URL)
+            wsaa = Client(WSAA_URL, transport=Transport(session=session_requests))
             resp_xml = wsaa.service.loginCms(in0=cms_b64)
             root = ET.fromstring(resp_xml)
 
@@ -320,7 +338,7 @@ def emitir_factura_arca(data):
 
         auth = {"Token": ticket["token"], "Sign": ticket["sign"], "Cuit": int(CUIT)}
 
-        wsfe = Client(WSFE_URL)
+        wsfe = Client(WSFE_URL, transport=Transport(session=session_requests))
         ultimo = wsfe.service.FECompUltimoAutorizado(
             Auth=auth, PtoVta=PUNTO_VENTA, CbteTipo=TIPO_COMPROBANTE
         ).CbteNro
