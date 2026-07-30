@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Historial y Logs - Wily{% endblock %}
+
+{% block content %}
+
+<div class="section-header" style="margin-bottom:24px">
+  <div class="section-title">Historial de eventos y errores</div>
+  <select id="filtro-nivel" style="width:auto;font-size:12px;padding:6px 10px">
+    <option value="">Todos</option>
+    <option value="INFO">Solo Info</option>
+    <option value="ERROR">Solo Errores</option>
+    <option value="WARN">Solo Avisos</option>
+  </select>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table id="tabla-logs">
+      <thead>
+        <tr>
+          <th>Fecha y hora</th>
+          <th>Nivel</th>
+          <th>Mensaje</th>
+          <th>Usuario</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in logs %}
+        <tr>
+          <td class="muted mono" style="font-size:12px;white-space:nowrap">{{ l['created_at'] }}</td>
+          <td>
+            {% if l['nivel'] == 'ERROR' %}
+              <span class="badge badge-err">Error</span>
+            {% elif l['nivel'] == 'WARN' %}
+              <span class="badge" style="background:#fff3cd;color:#8a6d00">Aviso</span>
+            {% else %}
+              <span class="badge" style="background:#e3eeff;color:#1a5fb0">Info</span>
+            {% endif %}
+          </td>
+          <td style="font-size:13px">{{ l['mensaje'] }}</td>
+          <td class="muted" style="font-size:12px">{{ l['usuario'] }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" style="text-align:center;padding:40px;color:var(--muted)">
+            Todavia no hay eventos registrados.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  document.getElementById("filtro-nivel").addEventListener("change", function() {
+    const val = this.value.toUpperCase();
+    document.querySelectorAll("#tabla-logs tbody tr").forEach(row => {
+      if (!val) { row.style.display = ""; return; }
+      const badge = row.querySelector(".badge");
+      if (!badge) { row.style.display = "none"; return; }
+      const texto = badge.textContent.trim().toUpperCase();
+      const match = (val === "INFO" && texto === "INFO") ||
+                    (val === "ERROR" && texto === "ERROR") ||
+                    (val === "WARN" && texto === "AVISO");
+      row.style.display = match ? "" : "none";
+    });
+  });
+</script>
+
+{% endblock %}

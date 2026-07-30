@@ -56,9 +56,31 @@ def init_db():
                 created_at   TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS logs (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                nivel      TEXT,
+                mensaje    TEXT,
+                usuario    TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         conn.commit()
 
 init_db()
+
+def log_evento(nivel, mensaje, usuario=None):
+    """Guarda un evento en la tabla de logs. nivel: INFO / ERROR / WARN"""
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO logs (nivel, mensaje, usuario) VALUES (?,?,?)",
+                (nivel, mensaje, usuario or session.get("usuario", "sistema"))
+            )
+            conn.commit()
+    except Exception:
+        pass  # el log nunca debe romper la app
+    print("[{}] {}".format(nivel, mensaje))
 
 def login_required(f):
     @wraps(f)
@@ -77,8 +99,10 @@ def login():
         if usuario in USUARIOS and USUARIOS[usuario]["password"] == password:
             session["usuario"] = usuario
             session["nombre"] = USUARIOS[usuario]["nombre"]
+            log_evento("INFO", "Inicio de sesion exitoso", usuario)
             return redirect(url_for("dashboard"))
         error = "Usuario o contrasena incorrectos"
+        log_evento("WARN", "Intento de login fallido con usuario '{}'".format(usuario), usuario)
     return render_template("login.html", error=error)
 
 @app.route("/logout")
@@ -127,87 +151,126 @@ def emitir():
         if resultado["estado"] == "APROBADO":
             flash("Factura C #{} emitida. CAE: {}".format(
                 resultado["numero"], resultado["cae"]), "success")
+            log_evento("INFO", "Factura C #{} emitida a '{}' por ${:,.2f}. CAE: {}".format(
+                resultado["numero"], resultado["destinatario"], resultado["monto"], resultado["cae"]))
         else:
             flash("Error: {}".format(resultado["error"]), "error")
+            log_evento("ERROR", "Factura rechazada para '{}' por ${:,.2f}. Motivo: {}".format(
+                data["nombre"], data["monto"], resultado["error"]))
 
         return redirect(url_for("dashboard"))
 
     return render_template("emitir.html", usuario=session["usuario"])
 
-@app.route("/masivo", methods=["GET", "POST"])
+def _parsear_archivo_masivo(archivo):
+    """Lee un Excel o CSV y devuelve una lista de filas normalizadas
+    con las claves: nombre, doc_tipo, doc_nro, monto"""
+    nombre_archivo = archivo.filename.lower()
+    filas = []
+
+    if nombre_archivo.endswith(".xlsx") or nombre_archivo.endswith(".xls"):
+        import openpyxl
+        wb = openpyxl.load_workbook(archivo)
+        ws = wb.active
+
+        header_row = None
+        headers = []
+        for i, row in enumerate(ws.iter_rows(values_only=True), start=1):
+            valores = [str(v).strip().upper() if v else "" for v in row]
+            if any(v in ("RAZONSOCIAL", "NOMBRE", "TIPODOCUMENTO", "DOC_TIPO") for v in valores):
+                header_row = i
+                headers = [str(v).strip().lower() if v else "" for v in row]
+                break
+
+        if not header_row:
+            raise ValueError("No se encontraron los encabezados en el Excel.")
+
+        for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+            if not any(row):
+                continue
+            fila = {headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)}
+            filas.append(fila)
+    else:
+        content = archivo.read().decode("utf-8")
+        reader = csv.DictReader(io.StringIO(content))
+        filas = [{k.lower().strip(): v for k, v in row.items()} for row in reader]
+
+    normalizadas = []
+    for fila in filas:
+        nombre = (fila.get("razonsocial") or fila.get("nombre") or "").strip()
+        monto = float(fila.get("monto") or 0)
+
+        tipo_doc_raw = (fila.get("tipodocumento") or fila.get("doc_tipo") or "CF").strip().upper()
+        if tipo_doc_raw in ("CUIT", "80"):
+            doc_tipo = 80
+        elif tipo_doc_raw in ("DNI", "96"):
+            doc_tipo = 96
+        else:
+            doc_tipo = 99
+
+        doc_nro = (fila.get("nrodocumento") or fila.get("doc_nro") or "").strip()
+        doc_nro = doc_nro.replace("-", "").replace(".", "")
+
+        normalizadas.append({
+            "nombre":   nombre,
+            "doc_tipo": doc_tipo,
+            "doc_nro":  doc_nro,
+            "monto":    monto,
+        })
+    return normalizadas
+
+@app.route("/masivo", methods=["GET"])
 @login_required
 def masivo():
-    resultados = []
-    if request.method == "POST":
-        archivo = request.files.get("archivo")
-        if not archivo:
-            flash("Selecciona un archivo Excel o CSV", "error")
-            return redirect(url_for("masivo"))
+    return render_template("masivo.html", usuario=session["usuario"])
 
-        nombre_archivo = archivo.filename.lower()
-        filas = []
+@app.route("/masivo/preview", methods=["POST"])
+@login_required
+def masivo_preview():
+    archivo = request.files.get("archivo")
+    if not archivo:
+        return {"ok": False, "error": "No se selecciono ningun archivo"}, 400
+    try:
+        filas = _parsear_archivo_masivo(archivo)
+        if not filas:
+            return {"ok": False, "error": "El archivo no tiene filas de datos"}, 400
+        log_evento("INFO", "Carga masiva: archivo '{}' cargado con {} filas".format(
+            archivo.filename, len(filas)))
+        return {"ok": True, "filas": filas, "total": len(filas)}
+    except Exception as e:
+        log_evento("ERROR", "Error al leer archivo de carga masiva: {}".format(str(e)))
+        return {"ok": False, "error": str(e)}, 400
 
-        if nombre_archivo.endswith(".xlsx") or nombre_archivo.endswith(".xls"):
-            try:
-                import openpyxl
-                wb = openpyxl.load_workbook(archivo)
-                ws = wb.active
+@app.route("/masivo/emitir_uno", methods=["POST"])
+@login_required
+def masivo_emitir_uno():
+    data = request.get_json(force=True)
+    fila_data = {
+        "nombre":   data.get("nombre", ""),
+        "doc_tipo": int(data.get("doc_tipo", 99)),
+        "doc_nro":  data.get("doc_nro", ""),
+        "monto":    float(data.get("monto", 0)),
+    }
+    resultado = emitir_factura_arca(fila_data)
+    guardar_comprobante(resultado)
 
-                header_row = None
-                headers = []
-                for i, row in enumerate(ws.iter_rows(values_only=True), start=1):
-                    valores = [str(v).strip().upper() if v else "" for v in row]
-                    if any(v in ("RAZONSOCIAL", "NOMBRE", "TIPODOCUMENTO", "DOC_TIPO") for v in valores):
-                        header_row = i
-                        headers = [str(v).strip().lower() if v else "" for v in row]
-                        break
+    if resultado["estado"] == "APROBADO":
+        log_evento("INFO", "[Masivo] Factura C #{} emitida a '{}' por ${:,.2f}. CAE: {}".format(
+            resultado["numero"], resultado["destinatario"], resultado["monto"], resultado["cae"]))
+    else:
+        log_evento("ERROR", "[Masivo] Factura rechazada para '{}' por ${:,.2f}. Motivo: {}".format(
+            fila_data["nombre"], fila_data["monto"], resultado["error"]))
 
-                if not header_row:
-                    flash("No se encontraron los encabezados en el Excel.", "error")
-                    return redirect(url_for("masivo"))
+    return {"ok": True, "resultado": resultado}
 
-                for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
-                    if not any(row):
-                        continue
-                    fila = {headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)}
-                    filas.append(fila)
-            except Exception as e:
-                flash("Error al leer el Excel: {}".format(str(e)), "error")
-                return redirect(url_for("masivo"))
-        else:
-            content = archivo.read().decode("utf-8")
-            reader = csv.DictReader(io.StringIO(content))
-            filas = [{k.lower().strip(): v for k, v in row.items()} for row in reader]
-
-        for fila in filas:
-            nombre = (fila.get("razonsocial") or fila.get("nombre") or "").strip()
-            monto = float(fila.get("monto") or 0)
-
-            tipo_doc_raw = (fila.get("tipodocumento") or fila.get("doc_tipo") or "CF").strip().upper()
-            if tipo_doc_raw in ("CUIT", "80"):
-                doc_tipo = 80
-            elif tipo_doc_raw in ("DNI", "96"):
-                doc_tipo = 96
-            else:
-                doc_tipo = 99
-
-            doc_nro = (fila.get("nrodocumento") or fila.get("doc_nro") or "").strip()
-            doc_nro = doc_nro.replace("-", "").replace(".", "")
-
-            data = {
-                "nombre":   nombre,
-                "doc_tipo": doc_tipo,
-                "doc_nro":  doc_nro,
-                "monto":    monto,
-            }
-            resultado = emitir_factura_arca(data)
-            guardar_comprobante(resultado)
-            resultados.append(resultado)
-
-    return render_template("masivo.html",
-        usuario=session["usuario"],
-        resultados=resultados,
-    )
+@app.route("/logs")
+@login_required
+def logs():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM logs ORDER BY created_at DESC LIMIT 300"
+        ).fetchall()
+    return render_template("logs.html", logs=rows, usuario=session["usuario"])
 
 def emitir_factura_arca(data):
     import random, string
@@ -373,9 +436,6 @@ def emitir_factura_arca(data):
         })
 
         det = resp.FeDetResp.FECAEDetResponse[0]
-        print("RESULTADO ARCA:", det.Resultado)
-        print("ERRORES RESP:", resp.Errors)
-        print("OBS DET:", det.Observaciones)
         if det.Resultado == "A":
             return {
                 "numero": numero, "punto_venta": PUNTO_VENTA,
@@ -398,8 +458,8 @@ def emitir_factura_arca(data):
     except Exception as e:
         import traceback
         error_detalle = traceback.format_exc()
-        print("ERROR ARCA:", error_detalle)
         error_msg = str(e) if str(e) else "Error desconocido: " + type(e).__name__ + " - " + error_detalle[-500:]
+        log_evento("ERROR", "Excepcion tecnica al emitir factura: {}".format(error_msg))
         return {
             "numero": None, "punto_venta": PUNTO_VENTA,
             "fecha": hoy, "destinatario": data["nombre"],

@@ -236,6 +236,7 @@
     <a href="{{ url_for('dashboard') }}" {% if request.endpoint == 'dashboard' %}class="active"{% endif %}>Comprobantes</a>
     <a href="{{ url_for('emitir') }}"    {% if request.endpoint == 'emitir'    %}class="active"{% endif %}>Emitir</a>
     <a href="{{ url_for('masivo') }}"    {% if request.endpoint == 'masivo'    %}class="active"{% endif %}>Carga masiva</a>
+    <a href="{{ url_for('logs') }}"      {% if request.endpoint == 'logs'      %}class="active"{% endif %}>Historial</a>
   </div>
   <div class="nav-right">
     <span class="badge-usuario">{{ session.nombre }}</span>

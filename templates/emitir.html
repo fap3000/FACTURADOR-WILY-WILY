@@ -46,7 +46,7 @@
         </p>
       </div>
 
-      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:13px">
+      <button type="submit" class="btn btn-primary" id="btnEmitir" style="width:100%;justify-content:center;padding:13px">
         Emitir Factura C en ARCA
       </button>
 
@@ -76,6 +76,12 @@
       input.required = true;
     }
   }
+
+  document.querySelector("form").addEventListener("submit", function() {
+    const btn = document.getElementById("btnEmitir");
+    btn.disabled = true;
+    btn.textContent = "Emitiendo, aguarda un momento...";
+  });
 </script>
 
 {% endblock %}

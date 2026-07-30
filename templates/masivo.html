@@ -3,13 +3,13 @@
 
 {% block content %}
 
-<div style="max-width:700px;margin:0 auto">
+<div style="max-width:800px;margin:0 auto">
   <div class="section-header" style="margin-bottom:24px">
     <div class="section-title">Carga masiva de facturas</div>
     <a href="{{ url_for('dashboard') }}" class="btn btn-ghost" style="font-size:13px;padding:7px 14px">Volver</a>
   </div>
 
-  <div class="card" style="margin-bottom:16px">
+  <div class="card" style="margin-bottom:16px" id="card-formato">
     <div class="card-title" style="margin-bottom:10px">Formato del archivo Excel</div>
     <pre style="background:#f0f6ff;border:1px solid #c8ddf5;border-radius:7px;padding:14px;font-size:12px;overflow-x:auto;color:#1a2a3a;font-family:'JetBrains Mono',monospace;line-height:1.9">RAZONSOCIAL              |  TIPODOCUMENTO  |  NRODOCUMENTO  |  MONTO
 Juan Perez               |  DNI            |  30123456      |  15000.00
@@ -24,73 +24,185 @@ Consumidor Final         |  CF             |                |  8500.50</pre>
     </a>
   </div>
 
-  <div class="card" style="margin-bottom:24px">
-    <form method="POST" enctype="multipart/form-data">
-      <label class="upload-zone" for="archivo">
-        <input type="file" name="archivo" id="archivo" accept=".xlsx,.xls,.csv" onchange="mostrarNombre(this)">
-        <div id="upload-text">
-          <div style="font-size:32px;margin-bottom:10px">📊</div>
-          <div style="font-weight:600;margin-bottom:4px;color:var(--text)">Hac clic o arrastra tu archivo aca</div>
-          <div style="font-size:12px;color:var(--muted)">Excel (.xlsx) o CSV</div>
-        </div>
-      </label>
-      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:13px;margin-top:16px">
-        Procesar y emitir todas las facturas
-      </button>
-    </form>
+  <div class="card" style="margin-bottom:24px" id="card-upload">
+    <label class="upload-zone" for="archivo" id="upload-label">
+      <input type="file" name="archivo" id="archivo" accept=".xlsx,.xls,.csv" onchange="cargarArchivo(this)">
+      <div id="upload-text">
+        <div style="font-size:32px;margin-bottom:10px">📊</div>
+        <div style="font-weight:600;margin-bottom:4px;color:var(--text)">Hac clic o arrastra tu archivo aca</div>
+        <div style="font-size:12px;color:var(--muted)">Excel (.xlsx) o CSV</div>
+      </div>
+    </label>
   </div>
 
-  {% if resultados %}
-  <div class="card">
+  <!-- Vista previa de datos cargados -->
+  <div class="card" style="margin-bottom:24px;display:none" id="card-preview">
     <div class="section-header" style="margin-bottom:14px">
-      <span class="section-title" style="font-size:16px">Resultado del proceso</span>
-      <div style="font-size:13px;color:var(--muted)">
-        {{ resultados|selectattr('estado','equalto','APROBADO')|list|length }} aprobadas &nbsp;·&nbsp;
-        {{ resultados|selectattr('estado','equalto','RECHAZADO')|list|length }} rechazadas
-      </div>
+      <span class="section-title" style="font-size:16px">Datos cargados del archivo</span>
+      <span id="conteo-filas" style="font-size:13px;color:var(--muted)"></span>
     </div>
-    <div class="table-wrap">
-      <table>
+
+    <div class="table-wrap" style="max-height:340px;overflow-y:auto">
+      <table id="tabla-preview">
         <thead>
           <tr>
-            <th>Destinatario</th>
+            <th>#</th>
+            <th>Razon Social</th>
+            <th>Doc.</th>
             <th>Monto</th>
-            <th>CAE</th>
             <th>Estado</th>
+            <th>CAE</th>
           </tr>
         </thead>
-        <tbody>
-          {% for r in resultados %}
-          <tr>
-            <td>{{ r.destinatario }}</td>
-            <td class="mono">${{ "{:,.2f}".format(r.monto) }}</td>
-            <td class="mono muted" style="font-size:11px">
-              {% if r.cae %}{{ r.cae }}{% else %}<span style="color:#c62828">{{ r.error }}</span>{% endif %}
-            </td>
-            <td>
-              {% if r.estado == 'APROBADO' %}
-                <span class="badge badge-ok">Aprobado</span>
-              {% else %}
-                <span class="badge badge-err">Rechazado</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
+        <tbody id="tbody-preview"></tbody>
       </table>
     </div>
+
+    <!-- Barra de progreso -->
+    <div id="wrap-progreso" style="display:none;margin-top:18px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px">
+        <span id="progreso-texto">Procesando 0 de 0</span>
+        <span id="progreso-porcentaje">0%</span>
+      </div>
+      <div style="background:var(--border);border-radius:20px;height:10px;overflow:hidden">
+        <div id="barra-progreso" style="background:var(--accent);height:100%;width:0%;transition:width .25s"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-primary" id="btnProcesar" onclick="procesarTodas()" style="flex:1;justify-content:center">
+        Procesar y emitir todas las facturas
+      </button>
+      <button class="btn btn-ghost" id="btnCancelar" onclick="location.reload()">
+        Cancelar / Nueva carga
+      </button>
+    </div>
+
+    <div id="resumen-final" style="display:none;margin-top:16px;padding:14px;border-radius:8px;font-size:13px;font-weight:600"></div>
   </div>
-  {% endif %}
+
 </div>
 
 <script>
-  function mostrarNombre(input) {
-    if (input.files && input.files[0]) {
-      document.getElementById("upload-text").innerHTML =
-        '<div style="font-size:28px;margin-bottom:8px">OK</div>' +
-        '<div style="font-weight:600;color:#1a2a3a">' + input.files[0].name + '</div>' +
-        '<div style="font-size:12px;color:#5a7a9a">' + (input.files[0].size > 1024 ? (input.files[0].size/1024).toFixed(1)+'KB' : input.files[0].size+' bytes') + '</div>';
+  let filasData = [];
+
+  async function cargarArchivo(input) {
+    if (!input.files || !input.files[0]) return;
+
+    document.getElementById("upload-text").innerHTML =
+      '<div style="font-size:28px;margin-bottom:8px">⏳</div>' +
+      '<div style="font-weight:600;color:#1a2a3a">Leyendo archivo...</div>';
+
+    const formData = new FormData();
+    formData.append("archivo", input.files[0]);
+
+    try {
+      const resp = await fetch("{{ url_for('masivo_preview') }}", {
+        method: "POST",
+        body: formData
+      });
+      const data = await resp.json();
+
+      if (!data.ok) {
+        alert("Error: " + data.error);
+        location.reload();
+        return;
+      }
+
+      filasData = data.filas;
+      mostrarPreview();
+
+    } catch (err) {
+      alert("Error al leer el archivo: " + err);
+      location.reload();
     }
+  }
+
+  function mostrarPreview() {
+    document.getElementById("card-formato").style.display = "none";
+    document.getElementById("card-upload").style.display = "none";
+    document.getElementById("card-preview").style.display = "block";
+    document.getElementById("conteo-filas").textContent = filasData.length + " facturas cargadas";
+
+    const tbody = document.getElementById("tbody-preview");
+    tbody.innerHTML = "";
+
+    filasData.forEach((fila, i) => {
+      const docLabel = fila.doc_tipo === 80 ? "CUIT " + fila.doc_nro
+                      : fila.doc_tipo === 96 ? "DNI " + fila.doc_nro
+                      : "Consumidor Final";
+      const tr = document.createElement("tr");
+      tr.id = "fila-" + i;
+      tr.innerHTML = `
+        <td class="muted">${i + 1}</td>
+        <td>${fila.nombre || '<span class="muted">-</span>'}</td>
+        <td class="muted" style="font-size:12px">${docLabel}</td>
+        <td class="mono">$${fila.monto.toLocaleString("es-AR", {minimumFractionDigits:2})}</td>
+        <td id="estado-${i}"><span class="badge" style="background:#eef2f7;color:#5a7a9a">Pendiente</span></td>
+        <td id="cae-${i}" class="mono muted" style="font-size:11px">-</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function procesarTodas() {
+    const btnProcesar = document.getElementById("btnProcesar");
+    const btnCancelar = document.getElementById("btnCancelar");
+    btnProcesar.disabled = true;
+    btnCancelar.disabled = true;
+    btnProcesar.textContent = "Procesando...";
+
+    document.getElementById("wrap-progreso").style.display = "block";
+
+    let aprobadas = 0;
+    let rechazadas = 0;
+    const total = filasData.length;
+
+    for (let i = 0; i < total; i++) {
+      const fila = filasData[i];
+      document.getElementById("estado-" + i).innerHTML =
+        '<span class="badge" style="background:#fff3cd;color:#8a6d00">Procesando...</span>';
+
+      try {
+        const resp = await fetch("{{ url_for('masivo_emitir_uno') }}", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fila)
+        });
+        const data = await resp.json();
+        const r = data.resultado;
+
+        if (r.estado === "APROBADO") {
+          aprobadas++;
+          document.getElementById("estado-" + i).innerHTML = '<span class="badge badge-ok">Aprobado</span>';
+          document.getElementById("cae-" + i).textContent = r.cae;
+        } else {
+          rechazadas++;
+          document.getElementById("estado-" + i).innerHTML =
+            '<span class="badge badge-err" title="' + (r.error || '') + '">Rechazado</span>';
+          document.getElementById("cae-" + i).innerHTML =
+            '<span style="color:#c62828">' + (r.error || 'Error') + '</span>';
+        }
+      } catch (err) {
+        rechazadas++;
+        document.getElementById("estado-" + i).innerHTML = '<span class="badge badge-err">Error de red</span>';
+      }
+
+      const pct = Math.round(((i + 1) / total) * 100);
+      document.getElementById("barra-progreso").style.width = pct + "%";
+      document.getElementById("progreso-texto").textContent = "Procesando " + (i + 1) + " de " + total;
+      document.getElementById("progreso-porcentaje").textContent = pct + "%";
+    }
+
+    btnProcesar.style.display = "none";
+    btnCancelar.textContent = "Nueva carga";
+    btnCancelar.disabled = false;
+
+    const resumen = document.getElementById("resumen-final");
+    resumen.style.display = "block";
+    resumen.style.background = rechazadas === 0 ? "rgba(46,125,50,.1)" : "rgba(198,40,40,.08)";
+    resumen.style.color = rechazadas === 0 ? "#2e7d32" : "#8a4b00";
+    resumen.textContent = "Proceso finalizado: " + aprobadas + " aprobadas, " + rechazadas + " rechazadas de " + total + " totales.";
   }
 </script>
 
