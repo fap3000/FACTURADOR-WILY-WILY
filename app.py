@@ -5,17 +5,18 @@ Factura C para cuenta personal (Monotributista)
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from functools import wraps
-import sqlite3
 import json
 import os
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "wily-secret-2024")
 
-DB_PATH = os.environ.get("DB_PATH", "facturador.db")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 USUARIOS = {
     "facturador": {
@@ -31,55 +32,72 @@ USUARIOS = {
 PUNTO_VENTA = int(os.environ.get("PUNTO_VENTA", "1"))
 TIPO_COMPROBANTE = 11  # Factura C
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def hora_argentina():
+    """Devuelve el datetime actual en horario de Argentina (UTC-3)."""
+    return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=-3)))
+
+def get_conn():
+    """Conexion a Postgres (Supabase). Cada fila se devuelve como diccionario."""
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 def init_db():
-    with get_db() as conn:
-        conn.execute("""
+    if not DATABASE_URL:
+        print("[AVISO] DATABASE_URL no esta configurada. La app no podra guardar datos.")
+        return
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS comprobantes (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                id           SERIAL PRIMARY KEY,
                 numero       INTEGER,
                 punto_venta  INTEGER,
                 fecha        TEXT,
                 destinatario TEXT,
                 doc_tipo     INTEGER,
                 doc_nro      TEXT,
-                monto        REAL,
+                monto        DOUBLE PRECISION,
                 cae          TEXT,
                 cae_vto      TEXT,
                 estado       TEXT,
                 error        TEXT,
                 usuario      TEXT,
-                created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at   TEXT
             )
         """)
-        conn.execute("""
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS logs (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                id         SERIAL PRIMARY KEY,
                 nivel      TEXT,
                 mensaje    TEXT,
                 usuario    TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT
             )
         """)
         conn.commit()
+        cur.close()
+        conn.close()
+        print("[INFO] Base de datos Postgres lista")
+    except Exception as e:
+        print("[ERROR] No se pudo inicializar la base de datos:", str(e))
 
 init_db()
 
 def log_evento(nivel, mensaje, usuario=None):
     """Guarda un evento en la tabla de logs. nivel: INFO / ERROR / WARN"""
+    hora_str = hora_argentina().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        with get_db() as conn:
-            conn.execute(
-                "INSERT INTO logs (nivel, mensaje, usuario) VALUES (?,?,?)",
-                (nivel, mensaje, usuario or session.get("usuario", "sistema"))
-            )
-            conn.commit()
-    except Exception:
-        pass  # el log nunca debe romper la app
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO logs (nivel, mensaje, usuario, created_at) VALUES (%s,%s,%s,%s)",
+            (nivel, mensaje, usuario or session.get("usuario", "sistema"), hora_str)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print("[ERROR] No se pudo guardar el log:", str(e))
     print("[{}] {}".format(nivel, mensaje))
 
 def login_required(f):
@@ -113,20 +131,23 @@ def logout():
 @app.route("/")
 @login_required
 def dashboard():
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM comprobantes ORDER BY created_at DESC LIMIT 100"
-        ).fetchall()
-        total_mes = conn.execute("""
-            SELECT COALESCE(SUM(monto),0) FROM comprobantes
-            WHERE estado='APROBADO'
-            AND strftime('%Y-%m', fecha) = strftime('%Y-%m', 'now')
-        """).fetchone()[0]
-        cant_mes = conn.execute("""
-            SELECT COUNT(*) FROM comprobantes
-            WHERE estado='APROBADO'
-            AND strftime('%Y-%m', fecha) = strftime('%Y-%m', 'now')
-        """).fetchone()[0]
+    mes_actual = hora_argentina().strftime("%Y-%m")
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM comprobantes ORDER BY created_at DESC LIMIT 100")
+    rows = cur.fetchall()
+    cur.execute("""
+        SELECT COALESCE(SUM(monto),0) AS total FROM comprobantes
+        WHERE estado='APROBADO' AND LEFT(fecha, 7) = %s
+    """, (mes_actual,))
+    total_mes = cur.fetchone()["total"]
+    cur.execute("""
+        SELECT COUNT(*) AS cant FROM comprobantes
+        WHERE estado='APROBADO' AND LEFT(fecha, 7) = %s
+    """, (mes_actual,))
+    cant_mes = cur.fetchone()["cant"]
+    cur.close()
+    conn.close()
 
     return render_template("dashboard.html",
         comprobantes=rows,
@@ -266,17 +287,19 @@ def masivo_emitir_uno():
 @app.route("/logs")
 @login_required
 def logs():
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM logs ORDER BY created_at DESC LIMIT 300"
-        ).fetchall()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM logs ORDER BY created_at DESC LIMIT 300")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
     return render_template("logs.html", logs=rows, usuario=session["usuario"])
 
 def emitir_factura_arca(data):
     import random, string
 
     MODO_DEMO = not os.environ.get("CUIT")
-    hoy = datetime.now().strftime("%Y-%m-%d")
+    hoy = hora_argentina().strftime("%Y-%m-%d")
 
     if MODO_DEMO:
         numero = random.randint(1000, 9999)
@@ -470,19 +493,26 @@ def emitir_factura_arca(data):
         }
 
 def guardar_comprobante(r):
-    with get_db() as conn:
-        conn.execute("""
+    hora_str = hora_argentina().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
             INSERT INTO comprobantes
             (numero, punto_venta, fecha, destinatario, doc_tipo, doc_nro,
-             monto, cae, cae_vto, estado, error, usuario)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+             monto, cae, cae_vto, estado, error, usuario, created_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             r.get("numero"), r.get("punto_venta"), r.get("fecha"),
             r.get("destinatario"), r.get("doc_tipo"), r.get("doc_nro"),
             r.get("monto"), r.get("cae"), r.get("cae_vto"),
-            r.get("estado"), r.get("error"), r.get("usuario"),
+            r.get("estado"), r.get("error"), r.get("usuario"), hora_str,
         ))
         conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        log_evento("ERROR", "No se pudo guardar el comprobante en la base de datos: {}".format(str(e)))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

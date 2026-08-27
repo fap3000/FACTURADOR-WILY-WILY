@@ -5,3 +5,4 @@ requests
 gunicorn
 openpyxl
 cryptography
+psycopg2-binary
