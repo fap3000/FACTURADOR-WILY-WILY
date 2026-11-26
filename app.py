@@ -108,6 +108,24 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+@app.route("/ping")
+def ping():
+    """Endpoint publico sin login, para que un monitor externo (UptimeRobot)
+    haga una consulta real a la base cada pocos minutos y evite que
+    Supabase pause el proyecto por inactividad."""
+    if not DATABASE_URL:
+        return "SIN_DATABASE_URL", 500
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        cur.close()
+        conn.close()
+        return "OK", 200
+    except Exception as e:
+        return "ERROR: {}".format(str(e)), 500
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
